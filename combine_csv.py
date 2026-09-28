@@ -33,8 +33,8 @@ for file in files:
     sample_id = file.name[:-len(".annotated.csv")]
     if not sample_id:
         raise ValueError(f"Could not determine sample_id from {file}")
-    if "|" in sample_id:
-        raise ValueError(f"sample_id cannot contain '|': {sample_id}")
+    if re.search(r"[\s,;|]", sample_id):
+        raise ValueError(f"sample_id cannot contain whitespace, ',', ';' or '|': {sample_id}")
     if sample_id in sample_files:
         raise ValueError(f"Duplicate sample_id found: {sample_id}")
     sample_files[sample_id] = file
@@ -63,10 +63,10 @@ if sample_map_path is not None:
     if sample_map["sample_id"].duplicated().any():
         duplicates = sorted(sample_map.loc[sample_map["sample_id"].duplicated(), "sample_id"].unique())
         raise ValueError(f"Duplicate sample_id(s) in mapping file: {', '.join(duplicates)}")
-    if sample_map["sample_id"].str.contains(r"\|", regex=True).any():
-        raise ValueError("sample_id cannot contain '|' in the mapping file")
-    if sample_map["participant_id"].str.contains(r"[\\/|]", regex=True).any():
-        raise ValueError("participant_id cannot contain '/', '\\', or '|'")
+    if sample_map["sample_id"].str.contains(r"[\s,;|]", regex=True).any():
+        raise ValueError("sample_id cannot contain whitespace, ',', ';' or '|' in the mapping file")
+    if sample_map["participant_id"].str.contains(r"[,\\/|]", regex=True).any():
+        raise ValueError("participant_id cannot contain ',', '/', '\\', or '|'")
 
     mapping = dict(zip(sample_map["sample_id"], sample_map["participant_id"]))
     missing_samples = sorted(set(sample_files) - set(mapping))
@@ -108,8 +108,8 @@ for sample_id, file in sample_files.items():
 
     if (df["READ"].str.strip() == "").any():
         raise ValueError(f"Blank READ value found in {file}")
-    if df["READ"].str.contains(r"[\s|]", regex=True).any():
-        raise ValueError(f"READ values cannot contain whitespace or '|' in {file}")
+    if df["READ"].str.contains(r"[\s,;|]", regex=True).any():
+        raise ValueError(f"READ values cannot contain whitespace, ',', ';' or '|' in {file}")
 
     df["sample_id"] = sample_id
     df["participant_id"] = mapping[sample_id]
