@@ -7,18 +7,18 @@ import pandas as pd
 
 if len(sys.argv) not in {3, 4}:
     raise SystemExit(
-        "Usage: python3 combine_csv.py FINAL_RESULTS_DIR INPUT_DIR [SAMPLE_MAP_CSV]"
+        "Usage: python3 combine_csv.py FINAL_RESULTS_DIR PREPARED_DIR [SAMPLE_MAP_CSV]"
     )
 
 final_results = Path(sys.argv[1])
-input_dir = Path(sys.argv[2])
+prepared_dir = Path(sys.argv[2])
 sample_map_path = Path(sys.argv[3]) if len(sys.argv) == 4 else None
-master_path = input_dir / "masterfile.csv"
+master_path = prepared_dir / "masterfile.csv"
 
 if not final_results.is_dir():
     raise SystemExit(f"Missing final-results folder: {final_results}")
 
-input_dir.mkdir(parents=True, exist_ok=True)
+prepared_dir.mkdir(parents=True, exist_ok=True)
 
 # ------------------------------------------------------------
 # 1. Find sample-specific *.annotated.csv files.
@@ -141,20 +141,20 @@ def write_fasta(rows, path):
             if seq:
                 out.write(f">{row['sample_id']}|{row['READ']}\n{seq}\n")
 
-# Remove participant FASTAs from an earlier run.
-for file in input_dir.glob("*_hiv.fasta"):
+# Remove prepared participant FASTAs from an earlier run.
+for file in prepared_dir.glob("*_hiv.fasta"):
     file.unlink()
-for file in input_dir.glob("*_hiv_non_flanked.fasta"):
+for file in prepared_dir.glob("*_hiv_non_flanked.fasta"):
     file.unlink()
 
 for participant_id, df in master.groupby("participant_id", sort=True):
     df = df[df["HIV_SEQ"].str.strip() != ""].copy()
     df = df.drop_duplicates(["sample_id", "READ"], keep="first")
 
-    write_fasta(df, input_dir / f"{participant_id}_hiv.fasta")
+    write_fasta(df, prepared_dir / f"{participant_id}_hiv.fasta")
 
     nonflanked = df[df[chromosome_col].str.strip().str.upper() == "HIV"]
-    write_fasta(nonflanked, input_dir / f"{participant_id}_hiv_non_flanked.fasta")
+    write_fasta(nonflanked, prepared_dir / f"{participant_id}_hiv_non_flanked.fasta")
 
 print(f"Combined {len(tables)} sample CSV files into {master_path}")
 if sample_map_path is None:
@@ -163,4 +163,4 @@ else:
     print(f"Applied sample mapping: {sample_map_path}")
 print(f"Participants: {master['participant_id'].nunique()}")
 print(f"Non-flanked HIV reads (chromosome == HIV): {(master[chromosome_col].str.strip().str.upper() == 'HIV').sum()}")
-print(f"Created participant HIV FASTAs in {input_dir}")
+print(f"Prepared participant FASTAs in {prepared_dir}")
