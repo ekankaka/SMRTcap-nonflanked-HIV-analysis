@@ -35,10 +35,14 @@ MIN_SHORTER_COVERAGE = 0.95
 CIGAR = re.compile(r"(\d+)([MIDNSHP=X])")
 
 
-def raw_read(fasta_id):
-    """Convert a FASTA ID such as 107_5_<READ> back to the READ in masterfile.csv."""
-    fasta_id = re.sub(r"/[01]$", "", fasta_id)
-    return re.sub(r"^\d+_\d+(?:_[A-Z][A-Z0-9]*)?_", "", fasta_id)
+def clean_sequence_id(fasta_id):
+    """Return the sample-qualified FASTA ID, removing only an optional /0 or /1 suffix."""
+    return re.sub(r"/[01]$", "", fasta_id)
+
+
+def sample_read_id(sample_id, read):
+    """Build the unique sample-qualified ID used in participant FASTAs."""
+    return f"{sample_id}|{clean_sequence_id(read)}"
 
 
 def overlap(a1, a2, b1, b2):
@@ -175,11 +179,12 @@ def read_master(path):
 
     for row in rows:
         participant = row.get("participant_id", "")
-        read = raw_read(row.get("READ", ""))
-        if not read:
+        sample_id = row.get("sample_id", "")
+        read = row.get("READ", "")
+        if not sample_id or not read:
             continue
 
-        key = (participant, read)
+        key = (participant, sample_read_id(sample_id, read))
 
         strand = row.get("STRAND", "").strip().lower()
         if strand in {"plus", "minus"}:
@@ -203,7 +208,7 @@ def normalize(args):
     records = []
 
     for record in SeqIO.parse(args.sequences, "fasta"):
-        strand = strands.get((args.participant_id, raw_read(record.id)), "")
+        strand = strands.get((args.participant_id, clean_sequence_id(record.id)), "")
         if strand not in {"plus", "minus"}:
             raise ValueError(f"No unambiguous STRAND found for {record.id}")
 
@@ -329,10 +334,10 @@ def integration_assignment(hits, integration_metadata, participant_id):
     # Keep the best qualifying alignment to each flanked READ.
     best = {}
     for hit in qualifying:
-        read = raw_read(hit["tname"])
+        sequence_id = clean_sequence_id(hit["tname"])
         score = (shorter_coverage(hit), hit["identity"], hit["aln_len"])
-        if read not in best or score > best[read][0]:
-            best[read] = (score, hit)
+        if sequence_id not in best or score > best[sequence_id][0]:
+            best[sequence_id] = (score, hit)
 
     matched_reads = sorted(best)
     identities = []
@@ -340,13 +345,13 @@ def integration_assignment(hits, integration_metadata, participant_id):
     alignment_bp = []
     metadata = []
 
-    for read in matched_reads:
-        hit = best[read][1]
+    for sequence_id in matched_reads:
+        hit = best[sequence_id][1]
         identities.append(f"{100 * hit['identity']:.2f}")
         coverages.append(f"{100 * shorter_coverage(hit):.2f}")
         alignment_bp.append(str(hit["aln_len"]))
 
-        values = set(integration_metadata.get((participant_id, read), []))
+        values = set(integration_metadata.get((participant_id, sequence_id), []))
         if len(values) != 1:
             return (
                 "Putative integration ambiguous — conflicting flanked-read metadata",
@@ -428,7 +433,7 @@ def classify(args):
 
             out.writerow({
                 "participant_id": args.participant_id,
-                "sequence_id": raw_read(q),
+                "sequence_id": clean_sequence_id(q),
                 "circle_annotation": circle_annotation,
                 "putative_integration_status": status,
                 "matched_flanked_reads": matched,
@@ -458,7 +463,7 @@ def update_master(args):
     if os.path.isfile(args.classification) and os.path.getsize(args.classification):
         with open(args.classification, newline="") as f:
             for row in csv.DictReader(f):
-                calls[(row["participant_id"], raw_read(row["sequence_id"]))] = row
+                calls[(row["participant_id"], clean_sequence_id(row["sequence_id"]))] = row
 
     new_fields = [
         "CIRCULARIZATION_ARCHITECTURE",
@@ -473,33 +478,27 @@ def update_master(args):
     ]
 
     for row in rows:
-        # Derived fields are populated only for non-flanked reads.
         for field in new_fields:
             row[field] = ""
 
         if row.get(chromosome_col, "").strip().upper() != "HIV":
             continue
 
-        call = calls.get((row.get("participant_id", ""), raw_read(row.get("READ", ""))))
+        sequence_id = sample_read_id(row.get("sample_id", ""), row.get("READ", ""))
+        call = calls.get((row.get("participant_id", ""), sequence_id))
         if not call:
             row["CIRCULARIZATION_ARCHITECTURE"] = "Not evaluated"
             row["PUTATIVE_INTEGRATION_STATUS"] = "Not evaluated"
             continue
 
-        circle = call["circle_annotation"]
-        row["CIRCULARIZATION_ARCHITECTURE"] = circle
-
-        # This status is blank for circular/LTR-architecture reads.
+        row["CIRCULARIZATION_ARCHITECTURE"] = call["circle_annotation"]
         row["PUTATIVE_INTEGRATION_STATUS"] = call.get("putative_integration_status", "")
-
         row["MATCHED_FLANKED_READS"] = call.get("matched_flanked_reads", "")
         row["MATCH_PERCENT_IDENTITY"] = call.get("match_percent_identity", "")
         row["MATCH_SHORTER_FRAGMENT_COVERAGE"] = call.get("match_shorter_fragment_coverage", "")
         row["MATCH_ALIGNMENT_BP"] = call.get("match_alignment_bp", "")
 
-        resolved = call.get("putative_integration_status") == "Putatively integrated provirus"
-
-        if resolved:
+        if call.get("putative_integration_status") == "Putatively integrated provirus":
             row["CHROMOSOME_NEW"] = call["CHROMOSOME_NEW"]
             row["INTEGRATION_SITE_NEW"] = call["INTEGRATION_SITE_NEW"]
             row["CLONE_ID_NEW"] = call["CLONE_ID_NEW"]
