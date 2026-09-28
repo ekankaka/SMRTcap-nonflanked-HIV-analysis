@@ -344,7 +344,9 @@ def integration_assignment(hits, integration_metadata, participant_id):
     coverages = []
     alignment_bp = []
     metadata = []
+    conflicting_metadata = False
 
+    # Collect evidence for every matched read before resolving clone metadata.
     for sequence_id in matched_reads:
         hit = best[sequence_id][1]
         identities.append(f"{100 * hit['identity']:.2f}")
@@ -352,16 +354,10 @@ def integration_assignment(hits, integration_metadata, participant_id):
         alignment_bp.append(str(hit["aln_len"]))
 
         values = set(integration_metadata.get((participant_id, sequence_id), []))
-        if len(values) != 1:
-            return (
-                "Putative integration ambiguous — conflicting flanked-read metadata",
-                ";".join(matched_reads),
-                ";".join(identities),
-                ";".join(coverages),
-                ";".join(alignment_bp),
-                "", "", "",
-            )
-        metadata.append(next(iter(values)))
+        if len(values) == 1:
+            metadata.append(next(iter(values)))
+        else:
+            conflicting_metadata = True
 
     metrics = (
         ";".join(matched_reads),
@@ -369,6 +365,9 @@ def integration_assignment(hits, integration_metadata, participant_id):
         ";".join(coverages),
         ";".join(alignment_bp),
     )
+
+    if conflicting_metadata:
+        return "Putative integration ambiguous — conflicting flanked-read metadata", *metrics, "", "", ""
 
     if len(metadata) == 1:
         clone, chromosome, site = metadata[0]
@@ -478,6 +477,7 @@ def update_master(args):
     ]
 
     for row in rows:
+        # Derived fields are populated only for non-flanked reads.
         for field in new_fields:
             row[field] = ""
 
