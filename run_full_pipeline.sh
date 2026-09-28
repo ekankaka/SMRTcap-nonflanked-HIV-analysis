@@ -6,16 +6,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 usage() {
     cat <<'TXT'
 Usage:
-  bash run_full_pipeline.sh FINAL_RESULTS_DIR HXB2_FASTA [INPUT_DIR] [OUTPUT_DIR]
+  bash run_full_pipeline.sh FINAL_RESULTS_DIR HXB2_FASTA [SAMPLE_MAP_CSV] [INPUT_DIR] [OUTPUT_DIR]
 
 Arguments:
   FINAL_RESULTS_DIR   Folder containing sample subfolders with *.annotated.csv files
   HXB2_FASTA          HXB2 reference FASTA
+  SAMPLE_MAP_CSV      Optional CSV with sample_id,participant_id columns. Use - for none.
   INPUT_DIR           Intermediate input files (default: input)
   OUTPUT_DIR          Results and work files (default: output)
 
-Example:
-  bash run_full_pipeline.sh final_results hiv_genome_panel/HXB2.fasta
+Examples:
+  bash run_full_pipeline.sh final_results HXB2.fasta
+  bash run_full_pipeline.sh final_results HXB2.fasta sample_to_participant.csv
+  bash run_full_pipeline.sh final_results HXB2.fasta - input output
 TXT
 }
 
@@ -24,15 +27,17 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
     exit 0
 fi
 
-if (( $# < 2 || $# > 4 )); then
+if (( $# < 2 || $# > 5 )); then
     usage >&2
     exit 1
 fi
 
 FINAL_RESULTS_DIR="$1"
 HXB2="$2"
-INPUT_DIR="${3:-input}"
-OUTPUT_DIR="${4:-output}"
+SAMPLE_MAP="${3:-}"
+[[ "$SAMPLE_MAP" == "-" ]] && SAMPLE_MAP=""
+INPUT_DIR="${4:-input}"
+OUTPUT_DIR="${5:-output}"
 
 MASTER="$INPUT_DIR/masterfile.csv"
 WORK="$OUTPUT_DIR/work"
@@ -57,6 +62,10 @@ python3 -c 'import pandas, Bio' >/dev/null 2>&1 || {
 
 [[ -d "$FINAL_RESULTS_DIR" ]] || { echo "Missing folder: $FINAL_RESULTS_DIR" >&2; exit 1; }
 [[ -s "$HXB2" ]] || { echo "Missing HXB2 FASTA: $HXB2" >&2; exit 1; }
+if [[ -n "$SAMPLE_MAP" && ! -s "$SAMPLE_MAP" ]]; then
+    echo "Missing sample mapping CSV: $SAMPLE_MAP" >&2
+    exit 1
+fi
 
 mkdir -p "$INPUT_DIR" "$WORK"
 
@@ -66,13 +75,18 @@ python3 "$SCRIPT_DIR/classify_nonflanked_hiv.py" settings
 
 echo "Input annotated CSV folder: $FINAL_RESULTS_DIR"
 echo "HXB2 reference:             $HXB2"
+echo "Sample mapping:             ${SAMPLE_MAP:-none (sample_id = participant_id)}"
 echo "Input/intermediate folder:  $INPUT_DIR"
 echo "Output folder:              $OUTPUT_DIR"
 
 # ------------------------------------------------------------
 # 1. Combine annotated CSVs and create participant HIV FASTAs.
 # ------------------------------------------------------------
-python3 "$SCRIPT_DIR/combine_csv.py" "$FINAL_RESULTS_DIR" "$INPUT_DIR"
+if [[ -n "$SAMPLE_MAP" ]]; then
+    python3 "$SCRIPT_DIR/combine_csv.py" "$FINAL_RESULTS_DIR" "$INPUT_DIR" "$SAMPLE_MAP"
+else
+    python3 "$SCRIPT_DIR/combine_csv.py" "$FINAL_RESULTS_DIR" "$INPUT_DIR"
+fi
 
 # ------------------------------------------------------------
 # 2. Build HXB2-derived references for circular HIV architecture.
@@ -119,7 +133,6 @@ for file in "${files[@]}"; do
             tail -n +2 "$class" >> "$ALL_CLASS"
         fi
 
-        # Summarize all non-flanked classifications in one pass.
         read -r classified circular assigned failed_threshold ambiguous_clone conflicting_metadata < <(
             awk -F ',' '
                 NR > 1 {
@@ -138,7 +151,6 @@ for file in "${files[@]}"; do
             ' "$class"
         )
 
-        # Normally every non-flanked read has exactly one classification row.
         not_evaluated=$((non - classified))
         if (( not_evaluated < 0 )); then
             not_evaluated=0
@@ -168,6 +180,6 @@ python3 "$SCRIPT_DIR/classify_nonflanked_hiv.py" update-master \
 
 echo ""
 echo "Finished."
-echo "Main output:        $FINAL_OUTPUT"
+echo "Main output:         $FINAL_OUTPUT"
 echo "Participant summary: $SUMMARY"
 echo "QC/intermediate files: $WORK"
