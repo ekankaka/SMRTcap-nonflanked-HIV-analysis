@@ -6,19 +6,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 usage() {
     cat <<'TXT'
 Usage:
-  bash run_full_pipeline.sh FINAL_RESULTS_DIR HXB2_FASTA [SAMPLE_MAP_CSV] [INPUT_DIR] [OUTPUT_DIR]
+  bash run_full_pipeline.sh FINAL_RESULTS_DIR HXB2_FASTA [SAMPLE_MAP_CSV] [RESULTS_DIR]
 
 Arguments:
   FINAL_RESULTS_DIR   Folder containing sample subfolders with *.annotated.csv files
   HXB2_FASTA          HXB2 reference FASTA
   SAMPLE_MAP_CSV      Optional CSV with sample_id,participant_id columns. Use - for none.
-  INPUT_DIR           Intermediate input files (default: input)
-  OUTPUT_DIR          Results and work files (default: output)
+  RESULTS_DIR         Final results folder (default: results)
+
+Notes:
+  Intermediate files are written automatically to work/.
 
 Examples:
   bash run_full_pipeline.sh final_results HXB2.fasta
   bash run_full_pipeline.sh final_results HXB2.fasta sample_to_participant.csv
-  bash run_full_pipeline.sh final_results HXB2.fasta - input output
+  bash run_full_pipeline.sh final_results HXB2.fasta - my_results
 TXT
 }
 
@@ -27,7 +29,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
     exit 0
 fi
 
-if (( $# < 2 || $# > 5 )); then
+if (( $# < 2 || $# > 4 )); then
     usage >&2
     exit 1
 fi
@@ -36,14 +38,18 @@ FINAL_RESULTS_DIR="$1"
 HXB2="$2"
 SAMPLE_MAP="${3:-}"
 [[ "$SAMPLE_MAP" == "-" ]] && SAMPLE_MAP=""
-INPUT_DIR="${4:-input}"
-OUTPUT_DIR="${5:-output}"
+RESULTS_DIR="${4:-results}"
 
-MASTER="$INPUT_DIR/masterfile.csv"
-WORK="$OUTPUT_DIR/work"
-SUMMARY="$OUTPUT_DIR/participant_hiv_summary.csv"
-ALL_CLASS="$OUTPUT_DIR/all_participants_nonflanked_HIV_classification.csv"
-FINAL_OUTPUT="$OUTPUT_DIR/masterfile_with_putative_integration_sites.csv"
+WORK_DIR="work"
+PREPARED_DIR="$WORK_DIR/prepared"
+PARTICIPANT_WORK_DIR="$WORK_DIR/participants"
+PARTICIPANT_RESULTS_DIR="$RESULTS_DIR/participants"
+
+MASTER="$PREPARED_DIR/masterfile.csv"
+CIRCLE_REFS="$WORK_DIR/circle_refs.fasta"
+SUMMARY="$RESULTS_DIR/participant_hiv_summary.csv"
+ALL_CLASS="$RESULTS_DIR/all_participants_nonflanked_HIV_classification.csv"
+FINAL_OUTPUT="$RESULTS_DIR/masterfile_with_putative_integration_sites.csv"
 
 # ------------------------------------------------------------
 # Check software and input files before starting.
@@ -67,25 +73,25 @@ if [[ -n "$SAMPLE_MAP" && ! -s "$SAMPLE_MAP" ]]; then
     exit 1
 fi
 
-mkdir -p "$INPUT_DIR" "$WORK"
+mkdir -p "$PREPARED_DIR" "$PARTICIPANT_WORK_DIR" "$PARTICIPANT_RESULTS_DIR"
 
-# Print the version and scientific thresholds used in this run.
+# Print the version, thresholds, and paths used in this run.
 echo ""
 python3 "$SCRIPT_DIR/classify_nonflanked_hiv.py" settings
 
-echo "Input annotated CSV folder: $FINAL_RESULTS_DIR"
-echo "HXB2 reference:             $HXB2"
-echo "Sample mapping:             ${SAMPLE_MAP:-none (sample_id = participant_id)}"
-echo "Input/intermediate folder:  $INPUT_DIR"
-echo "Output folder:              $OUTPUT_DIR"
+echo "Annotated CSV input: $FINAL_RESULTS_DIR"
+echo "HXB2 reference:      $HXB2"
+echo "Sample mapping:      ${SAMPLE_MAP:-none (sample_id = participant_id)}"
+echo "Work folder:         $WORK_DIR"
+echo "Results folder:      $RESULTS_DIR"
 
 # ------------------------------------------------------------
-# 1. Combine annotated CSVs and create participant HIV FASTAs.
+# 1. Combine annotated CSVs and create participant FASTAs.
 # ------------------------------------------------------------
 if [[ -n "$SAMPLE_MAP" ]]; then
-    python3 "$SCRIPT_DIR/combine_csv.py" "$FINAL_RESULTS_DIR" "$INPUT_DIR" "$SAMPLE_MAP"
+    python3 "$SCRIPT_DIR/combine_csv.py" "$FINAL_RESULTS_DIR" "$PREPARED_DIR" "$SAMPLE_MAP"
 else
-    python3 "$SCRIPT_DIR/combine_csv.py" "$FINAL_RESULTS_DIR" "$INPUT_DIR"
+    python3 "$SCRIPT_DIR/combine_csv.py" "$FINAL_RESULTS_DIR" "$PREPARED_DIR"
 fi
 
 # ------------------------------------------------------------
@@ -93,13 +99,13 @@ fi
 # ------------------------------------------------------------
 python3 "$SCRIPT_DIR/classify_nonflanked_hiv.py" make-refs \
     --hxb2 "$HXB2" \
-    --output "$WORK/circle_refs.fasta"
+    --output "$CIRCLE_REFS"
 
 # ------------------------------------------------------------
 # 3. Run each participant.
 # ------------------------------------------------------------
 shopt -s nullglob
-files=("$INPUT_DIR"/*_hiv.fasta)
+files=("$PREPARED_DIR"/*_hiv.fasta)
 ((${#files[@]})) || { echo "No participant HIV FASTAs were created." >&2; exit 1; }
 
 rm -f "$ALL_CLASS"
@@ -107,7 +113,7 @@ printf "participant_id,total_hiv,flanked_hiv,non_flanked_hiv,classification_run,
 
 for file in "${files[@]}"; do
     pid=$(basename "$file" _hiv.fasta)
-    nonfile="$INPUT_DIR/${pid}_hiv_non_flanked.fasta"
+    nonfile="$PREPARED_DIR/${pid}_hiv_non_flanked.fasta"
 
     total=$(grep -c '^>' "$file" || true)
     non=$(grep -c '^>' "$nonfile" 2>/dev/null || true)
@@ -115,7 +121,7 @@ for file in "${files[@]}"; do
 
     echo ""
     echo "=== Participant $pid ==="
-    bash "$SCRIPT_DIR/run_participant_pipeline.sh" "$pid" "$HXB2" "$INPUT_DIR" "$OUTPUT_DIR"
+    bash "$SCRIPT_DIR/run_participant_pipeline.sh" "$pid" "$HXB2" "$WORK_DIR" "$RESULTS_DIR"
 
     circular=0
     assigned=0
@@ -125,7 +131,7 @@ for file in "${files[@]}"; do
     not_evaluated=0
 
     if (( non > 0 )); then
-        class="$OUTPUT_DIR/$pid/${pid}_nonflanked_HIV_classification.csv"
+        class="$PARTICIPANT_RESULTS_DIR/$pid/${pid}_nonflanked_HIV_classification.csv"
 
         if [[ ! -s "$ALL_CLASS" ]]; then
             cat "$class" > "$ALL_CLASS"
@@ -167,7 +173,7 @@ done
 
 # ------------------------------------------------------------
 # 4. Add circularization, match evidence, and putative integration
-#    results to masterfile.csv. Derived fields stay blank for flanked reads.
+#    results to the combined masterfile.
 # ------------------------------------------------------------
 if [[ ! -s "$ALL_CLASS" ]]; then
     printf "participant_id,sequence_id,circle_annotation,putative_integration_status,matched_flanked_reads,match_percent_identity,match_shorter_fragment_coverage,match_alignment_bp,CLONE_ID_NEW,CHROMOSOME_NEW,INTEGRATION_SITE_NEW\n" > "$ALL_CLASS"
@@ -182,4 +188,4 @@ echo ""
 echo "Finished."
 echo "Main output:         $FINAL_OUTPUT"
 echo "Participant summary: $SUMMARY"
-echo "QC/intermediate files: $WORK"
+echo "Intermediate files:  $WORK_DIR"
