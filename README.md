@@ -4,7 +4,7 @@ Version **1.0.0**
 
 This pipeline classifies non-flanked HIV reads for circular HIV architecture and, when no circle-specific architecture is detected, attempts to assign a putative integration site by matching the non-flanked read to participant-specific flanked HIV reads.
 
-The pipeline is intentionally small: two Bash scripts and two Python scripts. Intermediate mapping files are retained in `output/work/` for QC and auditing.
+The pipeline is intentionally small: two Bash scripts and two Python scripts. True upstream inputs, generated work files, and final results are kept clearly separate.
 
 ## Upstream input: `nf-viral-integration`
 
@@ -12,7 +12,7 @@ This is a downstream analysis workflow designed to use sample-specific `*.annota
 
 `nf-viral-integration` processes PacBio HiFi sequencing data to identify and annotate HIV integration events. Its sample-specific `<sample_id>.annotated.csv` files are the primary input to this pipeline.
 
-This repository is independent of `nf-viral-integration` and does not replace its upstream integration-site calling and annotation workflow. Instead, this pipeline extends analysis of the annotated output by:
+This repository is independent of `nf-viral-integration` and does not replace its upstream integration-site calling and annotation workflow. It extends those annotated outputs by:
 
 - identifying non-flanked HIV reads;
 - evaluating evidence for circular HIV DNA architecture;
@@ -33,9 +33,9 @@ Install the Python packages with:
 python3 -m pip install -r requirements.txt
 ```
 
-## 2. Input files
+## 2. True pipeline inputs
 
-The first input is the `final_results` directory (or equivalent collection of sample folders) containing sample-specific `*.annotated.csv` files from `nf-viral-integration`.
+The main input is the `final_results` directory (or an equivalent collection of sample folders) containing sample-specific `*.annotated.csv` files from `nf-viral-integration`.
 
 For example:
 
@@ -49,11 +49,13 @@ final_results/
     └── sample1321R.annotated.csv
 ```
 
-The pipeline does not require a participant/visit naming pattern. The `sample_id` is taken directly from the filename before `.annotated.csv`. To keep FASTA and match-evidence identifiers unambiguous, `sample_id` and `READ` values cannot contain whitespace, commas, semicolons, or `|`.
+The other required input is an HXB2 reference FASTA containing exactly one sequence of 9,719 bp.
+
+The pipeline does not require a participant/visit naming pattern. `sample_id` is taken directly from the filename before `.annotated.csv`. To keep FASTA and match-evidence identifiers unambiguous, `sample_id` and `READ` values cannot contain whitespace, commas, semicolons, or `|`.
 
 ### Optional sample-to-participant mapping
 
-If an individual has more than one sample, provide an optional CSV containing exactly the grouping information needed by this pipeline:
+If an individual has more than one sample, provide an optional CSV with two columns:
 
 ```csv
 sample_id,participant_id
@@ -68,7 +70,7 @@ When this file is supplied:
 - every input `sample_id` must occur exactly once in the mapping file;
 - several sample IDs may map to the same participant;
 - non-flanked/flanked read matching can occur across samples belonging to that participant;
-- a sample mapped to two participants is an error;
+- duplicate or conflicting `sample_id` rows cause an error;
 - mapping rows for samples not present in the input generate a warning.
 
 When no mapping file is supplied, the pipeline uses:
@@ -106,15 +108,9 @@ HIV  + NA       -> HIV_NA
 
 `CLONE_ID2` is the clone identifier used for putative integration-site resolution. `CLONE_ID_NEW` is reserved for the putative clone assigned to a successfully matched non-flanked read.
 
-Internally, participant FASTA records use `sample_id|READ` so reads remain unambiguous when several samples belong to one participant. Qualifying matched-read evidence is reported using the same sample-qualified identifier.
+Internally, participant FASTA records use `sample_id|READ` so reads remain unambiguous when several samples belong to one participant.
 
-## 4. HXB2 reference
-
-Provide an HXB2 FASTA containing exactly one sequence of 9,719 bp. The pipeline uses the reference to construct diagnostic 1-LTR and 2-LTR architecture references.
-
-The HXB2 reference itself is not distributed with this pipeline.
-
-## 5. Run the pipeline
+## 4. Run the pipeline
 
 Without a mapping file:
 
@@ -133,18 +129,67 @@ bash run_full_pipeline.sh \
     sample_to_participant.csv
 ```
 
-Optional custom working folders can be supplied as the fourth and fifth arguments. Use `-` as the third argument when no mapping file is used:
+The default final-results folder is `results/`. To use a different results folder, use `-` when there is no mapping file:
 
 ```bash
 bash run_full_pipeline.sh \
     /path/to/final_results \
     /path/to/HXB2.fasta \
     - \
-    input \
-    output
+    my_results
 ```
 
 Use `bash run_full_pipeline.sh --help` for the short command-line guide.
+
+## 5. Generated folder structure
+
+The pipeline creates only two top-level working areas:
+
+```text
+work/       generated intermediate/QC files
+results/    final and interpretable outputs
+```
+
+The true input `*.annotated.csv` files remain in the upstream `nf-viral-integration` results directory and are never copied into an `input/` folder.
+
+### `work/`
+
+`work/` contains files generated by this pipeline and needed during processing. It is retained for reproducibility, QC, and troubleshooting.
+
+```text
+work/
+├── prepared/
+│   ├── masterfile.csv
+│   ├── <participant>_hiv.fasta
+│   └── <participant>_hiv_non_flanked.fasta
+├── circle_refs.fasta
+└── participants/
+    └── <participant>/
+        ├── <participant>_hiv_forward_normalized.fasta
+        ├── <participant>_hiv_non_flanked_forward_normalized.fasta
+        ├── <participant>_hiv_flanked_forward_normalized.fasta
+        ├── <participant>_vs_HXB2.paf
+        ├── <participant>_vs_circle_refs.paf
+        └── <participant>_vs_flanked_HIV.paf
+```
+
+Thus, **all three forward-normalized FASTAs are stored in `work/participants/<participant>/`**, together with that participant's minimap2 PAF files.
+
+The `work/` folder is necessary while the pipeline runs. After a successful run it can be deleted if only the final results are needed, although retaining it is useful for auditing and QC.
+
+### `results/`
+
+`results/` contains outputs intended for interpretation or downstream analysis:
+
+```text
+results/
+├── masterfile_with_putative_integration_sites.csv
+├── participant_hiv_summary.csv
+├── all_participants_nonflanked_HIV_classification.csv
+└── participants/
+    └── <participant>/
+        └── <participant>_nonflanked_HIV_classification.csv
+```
 
 ## 6. Main analysis rules
 
@@ -190,7 +235,7 @@ These are computational criteria used by this workflow and should not be interpr
 
 ## 7. Main outputs
 
-### `output/masterfile_with_putative_integration_sites.csv`
+### `results/masterfile_with_putative_integration_sites.csv`
 
 Contains the original combined data plus derived fields for non-flanked reads, including:
 
@@ -206,19 +251,13 @@ Contains the original combined data plus derived fields for non-flanked reads, i
 
 Derived evaluation fields remain blank for original flanked reads. `MATCHED_FLANKED_READS` uses `sample_id|READ` so matched reads remain identifiable when a participant has multiple samples.
 
-### `output/participant_hiv_summary.csv`
+### `results/participant_hiv_summary.csv`
 
 Provides participant-level counts for total, flanked, non-flanked and circular reads, putative assignments, failed matching thresholds, ambiguous clone assignments, conflicting metadata, and any reads not evaluated.
-
-### `output/work/`
-
-Contains intermediate FASTAs and minimap2 PAF files for QC, troubleshooting, and auditing.
 
 ## 8. Example data
 
 `example_data/final_results/` contains two synthetic samples, `101-1` and `101-2`. `example_data/sample_to_participant.csv` maps both samples to participant `101`.
-
-The flanked example reads deliberately have different original `CLONE_ID` values but the same chromosome/integration coordinate. They therefore receive the same `CLONE_ID2`.
 
 Run the example with:
 
@@ -226,9 +265,7 @@ Run the example with:
 bash run_full_pipeline.sh \
     example_data/final_results \
     /path/to/HXB2.fasta \
-    example_data/sample_to_participant.csv \
-    example_input \
-    example_output
+    example_data/sample_to_participant.csv
 ```
 
 The example sequences are synthetic and are provided only to test installation and data flow, not for biological interpretation.
@@ -238,7 +275,7 @@ The example sequences are synthetic and are provided only to test installation a
 ```text
 run_full_pipeline.sh           Main entry point; runs all participants
 run_participant_pipeline.sh    Runs classification for one participant
-combine_csv.py                 Combines annotated CSVs and builds participant FASTAs
+combine_csv.py                 Combines annotated CSVs and prepares participant FASTAs
 classify_nonflanked_hiv.py     Circularization and putative integration logic
 requirements.txt               Python dependencies
 LICENSE                        MIT license
