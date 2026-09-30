@@ -214,6 +214,18 @@ chromosome == HIV
 
 Non-flanked reads are evaluated for 1-LTR/2-LTR architecture using HXB2-derived references. Mapping near both HXB2 ends alone is not considered evidence of circularity; diagnostic query-contiguous architecture is required.
 
+Recommended circularization thresholds used by this pipeline are:
+
+| Threshold | Value | Simple interpretation |
+| --- | ---: | --- |
+| Minimum identity | 75% | Allows for HIV sequence differences from HXB2 while still requiring a recognizable match. |
+| Minimum alignment | 50 bp | Ignores very short alignment hits. |
+| Strong anchor | 100 bp | A strong circle call requires substantial supporting sequence around the expected structure. |
+| Putative anchor | 25 bp | Allows more sensitive, lower-confidence circle evidence when the supporting sequence is shorter. |
+| Boundary flank | 20 bp | Requires sequence support on both sides of an expected boundary, rather than a hit ending beside it. |
+
+The 75% identity and 50 bp alignment thresholds are initial filters; they do **not** by themselves define a circle. The pipeline also requires the expected LTR architecture. Calls labeled **strong** have more supporting sequence than calls labeled **putative**, so putative calls should be interpreted more cautiously.
+
 ### Putative integration matching
 
 Integration matching is attempted only when:
@@ -222,16 +234,19 @@ Integration matching is attempted only when:
 CIRCULARIZATION_ARCHITECTURE = No circle-specific architecture detected
 ```
 
-A flanked/non-flanked alignment qualifies when all of the following are true:
+Recommended putative integration matching thresholds used by this pipeline are:
 
-- alignment is in the same forward-normalized orientation;
-- identity >= 98%;
-- shorter-fragment coverage >= 95%;
-- alignment length >= 100 bp.
+| Threshold | Value | Simple interpretation |
+| --- | ---: | --- |
+| Minimum identity | 98% | The non-flanked and flanked HIV sequences must be very similar. |
+| Shorter-fragment coverage | 95% | Nearly all of the shorter fragment must be included in the alignment. This helps prevent assignment from a short shared HIV region. |
+| Minimum alignment length | 100 bp | Adds a basic safeguard against very short matches. |
 
-If multiple qualifying flanked reads are present, assignment is made only when their `CLONE_ID2`, chromosome, and integration site resolve consistently.
+All three conditions must be satisfied, and the alignment must be in the same forward-normalized orientation. In this dataset, HIV fragments range from 316 to 9,615 nt (mean 4,148 nt), so the 95% coverage requirement is usually much more restrictive than the 100 bp minimum. For example, even the shortest 316-nt fragment must have about 300 nt covered to qualify.
 
-These are computational criteria used by this workflow and should not be interpreted as universally validated biological cutoffs.
+If multiple qualifying flanked reads are present, assignment is made only when their `CLONE_ID2`, chromosome, and integration site resolve consistently. If they point to different integration sites or conflicting metadata, the pipeline reports the assignment as ambiguous rather than forcing a match.
+
+These thresholds are recommended working criteria for this dataset and pipeline. They are computational rules rather than universally validated biological cutoffs, and they can be re-evaluated as additional validation data become available.
 
 ## 7. Main outputs
 
