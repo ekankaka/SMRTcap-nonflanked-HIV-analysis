@@ -147,8 +147,8 @@ for file in "${files[@]}"; do
                     if ($3 == "No circle-specific architecture detected") {
                         if ($4 == "Putatively integrated provirus") assigned++
                         else if ($4 ~ /^Origin indeterminate/) failed_threshold++
-                        else if ($4 ~ /^Putative integration ambiguous — multiple CLONE_ID2s/) ambiguous_clone++
-                        else if ($4 ~ /^Putative integration ambiguous — conflicting flanked-read metadata/) conflicting_metadata++
+                        else if ($4 ~ /^Putative integration ambiguous - multiple CLONE_ID2s/) ambiguous_clone++
+                        else if ($4 ~ /^Putative integration ambiguous - conflicting flanked-read metadata/) conflicting_metadata++
                     }
                 }
                 END {
@@ -176,7 +176,7 @@ done
 #    results to the combined masterfile.
 # ------------------------------------------------------------
 if [[ ! -s "$ALL_CLASS" ]]; then
-    printf "participant_id,sequence_id,circle_annotation,putative_integration_status,matched_flanked_reads,match_percent_identity,match_shorter_fragment_coverage,match_alignment_bp,CLONE_ID_NEW,CHROMOSOME_NEW,INTEGRATION_SITE_NEW\n" > "$ALL_CLASS"
+    printf "participant_id,sequence_id,circle_annotation,putative_integration_status,CHROMOSOME_NEW,INTEGRATION_SITE_NEW,CLONE_ID_NEW,matched_flanked_reads,match_percent_identity,match_shorter_fragment_coverage,match_alignment_bp\n" > "$ALL_CLASS"
 fi
 
 python3 "$SCRIPT_DIR/classify_nonflanked_hiv.py" update-master \
