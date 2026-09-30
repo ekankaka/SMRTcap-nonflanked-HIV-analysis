@@ -174,8 +174,13 @@ done
 # ------------------------------------------------------------
 # 4. Add circularization, match evidence, and putative integration
 #    results to the combined masterfile.
-#    update-master also works when no classification file was created.
 # ------------------------------------------------------------
+# Keep an empty, header-only classification file when there are no
+# non-flanked reads. The order matches every participant classification file.
+if [[ ! -s "$ALL_CLASS" ]]; then
+    printf "participant_id,sequence_id,circle_annotation,putative_integration_status,CHROMOSOME_NEW,INTEGRATION_SITE_NEW,CLONE_ID_NEW,matched_flanked_reads,match_percent_identity,match_shorter_fragment_coverage,match_alignment_bp\n" > "$ALL_CLASS"
+fi
+
 python3 "$SCRIPT_DIR/classify_nonflanked_hiv.py" update-master \
     --master "$MASTER" \
     --classification "$ALL_CLASS" \
