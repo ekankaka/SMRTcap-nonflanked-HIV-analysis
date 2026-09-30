@@ -42,7 +42,7 @@ RESULTS_DIR="${4:-results}"
 
 WORK_DIR="work"
 PREPARED_DIR="$WORK_DIR/prepared"
-PARTICIPANT_RESULTS_DIR="$RESULTS_DIR/participants"
+PARTICIPANT_WORK_DIR="$WORK_DIR/participants"
 
 MASTER="$PREPARED_DIR/masterfile.csv"
 CIRCLE_REFS="$WORK_DIR/circle_refs.fasta"
@@ -72,7 +72,7 @@ if [[ -n "$SAMPLE_MAP" && ! -s "$SAMPLE_MAP" ]]; then
     exit 1
 fi
 
-mkdir -p "$PREPARED_DIR" "$PARTICIPANT_RESULTS_DIR"
+mkdir -p "$PREPARED_DIR" "$RESULTS_DIR"
 
 # Print the version, thresholds, and paths used in this run.
 echo ""
@@ -120,7 +120,7 @@ for participant_fasta in "${participant_fastas[@]}"; do
 
     echo ""
     echo "=== Participant $participant_id ==="
-    bash "$SCRIPT_DIR/run_participant_pipeline.sh" "$participant_id" "$HXB2" "$WORK_DIR" "$RESULTS_DIR"
+    bash "$SCRIPT_DIR/run_participant_pipeline.sh" "$participant_id" "$HXB2" "$WORK_DIR"
 
     circular=0
     assigned=0
@@ -130,7 +130,7 @@ for participant_fasta in "${participant_fastas[@]}"; do
     not_evaluated=0
 
     if (( nonflanked_hiv > 0 )); then
-        classification_file="$PARTICIPANT_RESULTS_DIR/$participant_id/${participant_id}_nonflanked_HIV_classification.csv"
+        classification_file="$PARTICIPANT_WORK_DIR/$participant_id/${participant_id}_nonflanked_HIV_classification.csv"
 
         if [[ ! -s "$ALL_CLASS" ]]; then
             cat "$classification_file" > "$ALL_CLASS"
