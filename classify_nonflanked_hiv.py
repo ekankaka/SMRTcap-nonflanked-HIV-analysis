@@ -292,19 +292,19 @@ def circle_call(hits, is_ltr_only):
                 weak_wrap = True
 
     if two_strong:
-        return "2-LTR circle — strong"
+        return "2-LTR circle - strong"
     if two_putative and (one_strong or one_putative):
-        return "Circular HIV DNA — 1-LTR/2-LTR indeterminate"
+        return "Circular HIV DNA - 1-LTR/2-LTR indeterminate"
     if two_putative:
-        return "2-LTR circle — putative"
+        return "2-LTR circle - putative"
     if one_strong:
-        return "1-LTR circle — strong"
+        return "1-LTR circle - strong"
     if one_putative:
-        return "1-LTR circle — putative"
+        return "1-LTR circle - putative"
     if is_ltr_only:
-        return "LTR 5'/3' ambiguous — no evidence of circularity"
+        return "LTR 5'/3' ambiguous - no evidence of circularity"
     if weak_wrap:
-        return "Circular HIV DNA — 1-LTR/2-LTR indeterminate"
+        return "Circular HIV DNA - 1-LTR/2-LTR indeterminate"
     return "No circle-specific architecture detected"
 
 
@@ -329,7 +329,7 @@ def integration_assignment(hits, integration_metadata, participant_id):
     ]
 
     if not qualifying:
-        return "Origin indeterminate — no qualifying flanked-read match", "", "", "", "", "", "", ""
+        return "Origin indeterminate - no qualifying flanked-read match", "", "", "", "", "", "", ""
 
     # Keep the best qualifying alignment to each flanked READ.
     best = {}
@@ -367,7 +367,7 @@ def integration_assignment(hits, integration_metadata, participant_id):
     )
 
     if conflicting_metadata:
-        return "Putative integration ambiguous — conflicting flanked-read metadata", *metrics, "", "", ""
+        return "Putative integration ambiguous - conflicting flanked-read metadata", *metrics, "", "", ""
 
     if len(metadata) == 1:
         clone, chromosome, site = metadata[0]
@@ -386,7 +386,7 @@ def integration_assignment(hits, integration_metadata, participant_id):
             next(iter(sites)),
         )
 
-    return "Putative integration ambiguous — multiple CLONE_ID2s", *metrics, "", "", ""
+    return "Putative integration ambiguous - multiple CLONE_ID2s", *metrics, "", "", ""
 
 
 # ------------------------------------------------------------
@@ -403,13 +403,13 @@ def classify(args):
         "sequence_id",
         "circle_annotation",
         "putative_integration_status",
+        "CHROMOSOME_NEW",
+        "INTEGRATION_SITE_NEW",
+        "CLONE_ID_NEW",
         "matched_flanked_reads",
         "match_percent_identity",
         "match_shorter_fragment_coverage",
         "match_alignment_bp",
-        "CLONE_ID_NEW",
-        "CHROMOSOME_NEW",
-        "INTEGRATION_SITE_NEW",
     ]
 
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
