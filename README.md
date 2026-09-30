@@ -170,25 +170,25 @@ work/
         ├── <participant>_hiv_flanked_forward_normalized.fasta
         ├── <participant>_vs_HXB2.paf
         ├── <participant>_vs_circle_refs.paf
-        └── <participant>_vs_flanked_HIV.paf
+        ├── <participant>_vs_flanked_HIV.paf
+        └── <participant>_nonflanked_HIV_classification.csv
 ```
 
-Thus, **all three forward-normalized FASTAs are stored in `work/participants/<participant>/`**, together with that participant's minimap2 PAF files.
+All three forward-normalized FASTAs are retained in `work/participants/<participant>/`. The combined forward-normalized FASTA contains all HIV reads before they are split into flanked and non-flanked FASTAs and is intentionally kept for QC and auditing.
+
+The participant-specific classification CSV is also kept in `work/participants/<participant>/` because it is an intermediate participant-level file used to build the combined classification output.
 
 The `work/` folder is necessary while the pipeline runs. After a successful run it can be deleted if only the final results are needed, although retaining it is useful for auditing and QC.
 
 ### `results/`
 
-`results/` contains outputs intended for interpretation or downstream analysis:
+`results/` contains only the three combined outputs intended for interpretation or downstream analysis:
 
 ```text
 results/
 ├── masterfile_with_putative_integration_sites.csv
-├── participant_hiv_summary.csv
 ├── all_participants_nonflanked_HIV_classification.csv
-└── participants/
-    └── <participant>/
-        └── <participant>_nonflanked_HIV_classification.csv
+└── participant_hiv_summary.csv
 ```
 
 ## 6. Main analysis rules
@@ -265,6 +265,10 @@ Contains the original combined data plus derived fields for non-flanked reads, i
 - `MATCH_ALIGNMENT_BP`
 
 Derived evaluation fields remain blank for original flanked reads. `MATCHED_FLANKED_READS` uses `sample_id|READ` so matched reads remain identifiable when a participant has multiple samples.
+
+### `results/all_participants_nonflanked_HIV_classification.csv`
+
+Contains one row for each classified non-flanked HIV read across all participants. It provides the circularization call, putative integration status, assigned integration information when available, and sequence-match evidence. It is built by combining the participant-specific classification files retained under `work/participants/`.
 
 ### `results/participant_hiv_summary.csv`
 
